@@ -12,6 +12,9 @@
 #include <string.h>
 #include <math.h>
 
+#include "generator.h"
+
+
 #define EPS 0.0001f
 
 #define FUZZY_BOUND 0
