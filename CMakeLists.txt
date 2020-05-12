@@ -3,6 +3,8 @@ project(test_cuckoo)
 
 set(CMAKE_CXX_STANDARD 14)
 
+link_libraries(pthread)
+
 add_executable(test_cuckoo main.cpp)
 
-target_link_libraries(test_cuckoo pthread)
+add_executable(CH_HybridTest CH_HybridTest.cpp)

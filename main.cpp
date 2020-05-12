@@ -64,7 +64,7 @@ int main() {
     }
 
     pthread_t pid[THREAD_NUM];
-    thread_set(-1);
+    //thread_set(-1);
     if(SET_OP){
         for(int i=0;i<THREAD_NUM;i++){
             if(pthread_create(&pid[i], NULL, reinterpret_cast<void *(*)(void *)>(thread_set),
