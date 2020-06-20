@@ -74,7 +74,6 @@ int main() {
             }
         }
     } else{
-
         for(int i=0;i<THREAD_NUM;i++){
             if(pthread_create(&pid[i], NULL, reinterpret_cast<void *(*)(void *)>(thread_get),
                               reinterpret_cast<void *>(i)) != 0){
@@ -96,3 +95,4 @@ int main() {
 
     return 0;
 }
+
