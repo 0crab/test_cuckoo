@@ -180,7 +180,7 @@ public:
 
 class YCSBLoader {
 private:
-    char *inputpath;
+    const char *inputpath;
     size_t numberOfRequests;
     size_t limitOfRequests;
 
@@ -205,7 +205,7 @@ private:
     }
 
 public:
-    YCSBLoader(char *path, size_t number = std::numeric_limits<size_t>::max()) : inputpath(path),
+    YCSBLoader(const char *path, size_t number = std::numeric_limits<size_t>::max()) : inputpath(path),
                                                                                  numberOfRequests(0),
                                                                                  limitOfRequests(number) {}
 

@@ -5,14 +5,15 @@
 
 #include "tracer1.h"
 
+string load_path = "/home/czl/CLionProjects/test_cuckoo/load-a.dat";
+string run_path = "/home/czl/CLionProjects/test_cuckoo/run-a.dat";
+
 
 #define BATCH_SIZE 4096
 #define SET_HEAD_SIZE 32
 #define GET_HEAD_SIZE 24
 
-
 using namespace ycsb;
-
 
 libcuckoo::cuckoohash_map<string , string> Table;
 
@@ -51,30 +52,57 @@ int main(int argc, char **argv){
         return 0;
     }
 
+    {
+        YCSBLoader loader( load_path.c_str());
 
-    YCSBLoader loader( path);
+        loads=loader.load();
 
-    loads=loader.load();
+        con_database();
 
-    con_database();
+        std::vector<std::thread> threads;
 
-    std::vector<std::thread> threads;
+        for(int i=0;i<THREAD_NUM;i++){
+            printf("creating thread %d\n",i);
+            threads.push_back(std::thread(work_thread,i));
+        }
+        for(int i=0;i<THREAD_NUM;i++){
+            threads[i].join();
+        }
 
-    for(int i=0;i<THREAD_NUM;i++){
-        printf("creating thread %d\n",i);
-        threads.push_back(std::thread(work_thread,i));
+        unsigned long runtime=0;
+        for(int i = 0;i < THREAD_NUM; i++){
+            runtime += runtimelist[i];
+        }
+        runtime /= (THREAD_NUM);
+        printf("\n____\n load runtime:%lu\n",runtime);
     }
-    for(int i=0;i<THREAD_NUM;i++){
-        printf("stoping %d\n",i);
-        threads[i].join();
-    }
 
-    unsigned long runtime=0;
-    for(int i = 0;i < THREAD_NUM; i++){
-        runtime += runtimelist[i];
+    printf("***\n***\nfinish load start runing\n***\n***\n");
+
+    {
+        YCSBLoader loader(run_path.c_str());
+
+        loads=loader.load();
+
+        con_database();
+
+        std::vector<std::thread> threads;
+
+        for(int i=0;i<THREAD_NUM;i++){
+            printf("creating thread %d\n",i);
+            threads.push_back(std::thread(work_thread,i));
+        }
+        for(int i=0;i<THREAD_NUM;i++){
+            threads[i].join();
+        }
+
+        unsigned long runtime=0;
+        for(int i = 0;i < THREAD_NUM; i++){
+            runtime += runtimelist[i];
+        }
+        runtime /= (THREAD_NUM);
+        printf("\n____\n run runtime:%lu\n",runtime);
     }
-    runtime /= (THREAD_NUM);
-    printf("\n____\nruntime:%lu\n",runtime);
 
     return 0;
 }
@@ -88,7 +116,12 @@ void work_thread(int tid){
     for(int i=0;i<send_num;i++){
         ITEM it = database[start_index + i];
         if(it.r){
-            string res = Table.find(it.key);
+            try {
+                string res = Table.find(it.key);
+            }catch (const std::out_of_range& e){
+                std::cout<<e.what()<<endl;
+                exit(-1);
+            }
         }else{
             Table.insert_or_assign(it.key,it.value);
         }
