@@ -608,8 +608,8 @@ public:
       return buckets_[pos.index].mapped(pos.slot);
     } else {
         b.unlock(true);
-      //throw std::out_of_range("key not found in table");
-      return -1; //4294967295
+      throw std::out_of_range("key not found in table");
+      //return nullptr; //4294967295
     }
 
   }
