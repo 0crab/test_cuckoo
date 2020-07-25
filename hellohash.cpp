@@ -6,25 +6,30 @@
 
 libcuckoo::cuckoohash_map<uint64_t , uint64_t> Table;
 
-//uint64_t key = 666;
+#define TEST_NUM 10000000
+#define TEST_RANGE 10000000
+
+#define INSERT_THREAD_NUM 8
+#define READ_THREAD_NUM 8
+
 
 void insert_thread(int tid){
-    for(uint64_t i = 0; i <=  1000; ++i){
+    for(uint64_t i = 0; i <=  TEST_NUM; ++i){
         //uint64_t v = i % 2 + 1 ;
-        uint64_t key = i % 10;
-        Table.insert_or_assign(key,key );
+        uint64_t key = i % TEST_RANGE;
+         Table.insert_or_assign(key,key );
     }
     printf("write thread %d stop\n",tid);
 }
 void read_thread(int tid){
     uint64_t total =0;
-    for(uint64_t i = 0; i < 1000; ++i){
-        uint64_t key = i % 10;
+    for(uint64_t i = 0; i < TEST_NUM; ++i){
+        uint64_t key = i % TEST_RANGE;
         uint64_t v  ;
-        //Table.find_free(i % 10,v);
-        Table.find(key,v);
+        v = Table.find(key);
         if(v != key){
             printf("error  thread %d, %lu read\n", tid, total);
+            printf("key %d: value %d\n", key, v );
             exit(-1);
         }else{
             ++total ;
@@ -37,13 +42,27 @@ void read_thread(int tid){
 int main() {
     //Table.insert_or_assign(key,1);
 
-    std::thread it(insert_thread,0);
-    std::thread rt(read_thread,0);
-    //std::thread it1(insert_thread,1);
-    //std::thread rt1(read_thread,1);
+    for(int i = 0 ; i < TEST_RANGE ; i++){
+        Table.insert_or_assign(i,i );
+    }
 
-    it.join();
-    //it1.join();
-    rt.join();
-    //rt1.join();
+    std::vector<std::thread> insert_threads;
+    std::vector<std::thread> read_threads;
+
+    for(int i = 0 ; i < INSERT_THREAD_NUM; i++){
+        insert_threads.push_back(std::thread(insert_thread,i));
+    }
+
+    for(int i = 0 ; i < READ_THREAD_NUM; i++){
+        read_threads.push_back(std::thread(read_thread,i));
+    }
+
+    for(int i = 0 ; i < INSERT_THREAD_NUM; i++){
+        insert_threads[i].join();
+    }
+
+    for(int i = 0 ; i < READ_THREAD_NUM; i++){
+        read_threads[i].join();
+    }
+
 }
