@@ -23,6 +23,9 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <sys/types.h>
+#include <sys/syscall.h>
+#include <zconf.h>
 
 #include "cuckoohash_config.hh"
 #include "cuckoohash_util.hh"
@@ -1414,6 +1417,7 @@ private:
     // exception, which we catch and handle here.
     size_type hp = hashpower();
     b.unlock(false);
+    printf("thread %lu pre unlock\n",syscall(__NR_gettid));
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
@@ -1484,6 +1488,7 @@ private:
       const auto lock_manager = lock_one(hp, first.bucket, TABLE_MODE());
       const bucket &b = buckets_[first.bucket];
       if (!b.occupied(first.slot)) {
+          lock_manager.get()->unlock(false);
         // We can terminate here
         return 0;
       }
@@ -1502,6 +1507,7 @@ private:
       const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE());
       const bucket &b = buckets_[curr.bucket];
       if (!b.occupied(curr.slot)) {
+          lock_manager.get()->unlock(false);
         // We can terminate here
         return i;
       }
@@ -1573,6 +1579,12 @@ private:
       // the cuckoopath is still valid.
       if (tb.occupied(ts) || !fb.occupied(fs) ||
           hashed_key_only_hash(fb.key(fs)) != from.hv.hash) {
+          if (depth == 1) {
+              extra_manager.get()->unlock(false);
+              b.unlock(false);
+          }else{
+              twob.unlock(false);
+          }
         return false;
       }
 
@@ -1689,12 +1701,14 @@ private:
     while (!q.empty()) {
       b_slot x = q.dequeue();
       LockManager lock_manager = lock_one(hp, x.bucket, TABLE_MODE());
+      //printf("thread %lu solt_searchlock_one\n",syscall(__NR_gettid));
       bucket &b = buckets_[x.bucket];
       // Picks a (sort-of) random slot to start from
       size_type starting_slot = x.pathcode % slot_per_bucket();
       for (size_type i = 0; i < slot_per_bucket(); ++i) {
         uint16_t slot = (starting_slot + i) % slot_per_bucket();
         if (!b.occupied(slot)) {
+            lock_manager.get()->unlock(false);
           // We can terminate the search here
           x.pathcode = x.pathcode * slot_per_bucket() + slot;
           return x;
