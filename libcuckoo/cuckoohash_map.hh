@@ -1238,7 +1238,7 @@ private:
       case failure_key_duplicated:
         return pos;
       case failure_table_full:
-          printf("rehash\n");
+          //printf("rehash\n");
           //exit(-1);
         // Expand the table and try again, re-grabbing the locks
         cuckoo_fast_double<TABLE_MODE, automatic_resize>(hp);
@@ -1293,7 +1293,7 @@ private:
       return table_position{b.i2, static_cast<size_type>(res2), ok};
     }
 
-    printf("run cuckoo\n");
+    //printf("run cuckoo\n");
     //exit(-1);
     // We are unlucky, so let's perform cuckoo hashing.
     size_type insert_bucket = 0;
@@ -1305,7 +1305,7 @@ private:
       // to try again by returning failure_under_expansion.
       return table_position{0, 0, failure_under_expansion};
     } else if (st == ok) {
-        printf("try lock\n");
+        //printf("try lock\n");
         //exit(-1);
 //      assert(TABLE_MODE() == locked_table_mode() ||
 //             !get_current_locks()[lock_ind(b.i1)].try_lock());
@@ -1417,7 +1417,7 @@ private:
     // exception, which we catch and handle here.
     size_type hp = hashpower();
     b.unlock(false);
-    printf("thread %lu pre unlock\n",syscall(__NR_gettid));
+   // printf("thread %lu pre unlock\n",syscall(__NR_gettid));
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
@@ -1431,7 +1431,7 @@ private:
         if (cuckoopath_move<TABLE_MODE>(hp, cuckoo_path, depth, b)) {
           insert_bucket = cuckoo_path[0].bucket;
           insert_slot = cuckoo_path[0].slot;
-          printf("try lock\n");
+        //  printf("try lock\n");
         //  exit(-1);
           assert(insert_bucket == b.i1 || insert_bucket == b.i2);
 //          assert(TABLE_MODE() == locked_table_mode() ||
