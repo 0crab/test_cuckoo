@@ -43,12 +43,11 @@ void work_thread(int tid);
 
 int main(int argc, char **argv){
     char * path;
-    if(argc == 3){
+    if(argc == 2){
         THREAD_NUM = std::atol(argv[1]);
         runtimelist=(unsigned long *)malloc(THREAD_NUM* sizeof(unsigned long));
-        path=argv[2];
     }else{
-        printf("please input filename\n");
+        printf("please input thread_num\n");
         return 0;
     }
 
@@ -76,7 +75,8 @@ int main(int argc, char **argv){
         runtime /= (THREAD_NUM);
         printf("\n____\n load runtime:%lu\n",runtime);
     }
-
+    vector<ITEM>().swap(database);
+    vector<YCSB_request *>().swap(loads);
     printf("***\n***\nfinish load start runing\n***\n***\n");
 
     {
@@ -139,7 +139,7 @@ void con_database(int begin_index,int end_index){
         ITEM it;
 
         it.r = req->getOp() == lookup;
-        it.key = string(req->getKey(),req->keyLength());
+        it.key = string(req->getKey(),req->keyLength()-4);
         it.value = string(req->getVal(),req->valLength());
 
         database.push_back(it);
