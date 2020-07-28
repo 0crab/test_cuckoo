@@ -13,7 +13,7 @@ string load_path = "/home/czl/CLionProjects/test_cuckoo/load-a.dat";
 string run_path = "/home/czl/CLionProjects/test_cuckoo/run-a.dat";
 #else
 string load_path = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
-string run_path = "/kolla/asterixdb/YCSB/run-a-200m-8b.dat";
+string run_path = "/kolla/asterixdb/YCSB/run-a-200m-8B.dat";
 #endif
 
 
