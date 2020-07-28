@@ -5,8 +5,18 @@
 
 #include "tracer1.h"
 
+#define LOCAL true
+#define CHECK_FIND true
+
+#if(LOCAL)
 string load_path = "/home/czl/CLionProjects/test_cuckoo/load-a.dat";
 string run_path = "/home/czl/CLionProjects/test_cuckoo/run-a.dat";
+#else
+string load_path = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
+string run_path = "/kolla/asterixdb/YCSB/run-a-200m-8b.dat";
+#endif
+
+
 
 
 #define BATCH_SIZE 4096
@@ -77,6 +87,9 @@ int main(int argc, char **argv){
     }
     vector<ITEM>().swap(database);
     vector<YCSB_request *>().swap(loads);
+    for(int i = 0; i < THREAD_NUM;i++){
+        runtimelist[i] = 0;
+    }
     printf("***\n***\nfinish load start runing\n***\n***\n");
 
     {
@@ -115,6 +128,7 @@ void work_thread(int tid){
     tracer.startTime();
     for(int i=0;i<send_num;i++){
         ITEM it = database[start_index + i];
+#if(!CHECK_FIND)
         if(it.r){
             try {
                 string res = Table.find(it.key);
@@ -125,6 +139,23 @@ void work_thread(int tid){
         }else{
             Table.insert_or_assign(it.key,it.value);
         }
+#else
+        if(it.r){
+            try {
+                string res = Table.find(it.key);
+                if(res != it.key){
+                    cout<<"find err"<<endl;
+                    cout<<it.key<<":"<<res<<endl;
+                    exit(-1);
+                }
+            }catch (const std::out_of_range& e){
+                std::cout<<e.what()<<endl;
+                exit(-1);
+            }
+        }else{
+            Table.insert_or_assign(it.key,it.key);
+        }
+#endif
     }
     runtimelist[tid]+=tracer.getRunTime();
     printf("thread %d stop\n",tid);
