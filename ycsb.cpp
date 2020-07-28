@@ -61,6 +61,10 @@ int main(int argc, char **argv){
         return 0;
     }
 
+    cout<<"load file:"<<load_path<<endl;
+    cout<<"run  file:"<<run_path<<endl;
+    cout<<"CHECK FIND :"<<CHECK_FIND<<endl;
+
     {
         YCSBLoader loader( load_path.c_str());
 
@@ -68,29 +72,32 @@ int main(int argc, char **argv){
 
         con_database();
 
+
+        cout<<"finish load load file"<<endl;
         std::vector<std::thread> threads;
 
         for(int i=0;i<THREAD_NUM;i++){
-            printf("creating thread %d\n",i);
             threads.push_back(std::thread(work_thread,i));
         }
+        printf("finish create %d thread ==>",THREAD_NUM);
         for(int i=0;i<THREAD_NUM;i++){
             threads[i].join();
         }
+        printf("run stop\n");
 
         unsigned long runtime=0;
         for(int i = 0;i < THREAD_NUM; i++){
             runtime += runtimelist[i];
         }
         runtime /= (THREAD_NUM);
-        printf("\n____\n load runtime:%lu\n",runtime);
+        printf("load runtime:%lu\n",runtime);
     }
     vector<ITEM>().swap(database);
     vector<YCSB_request *>().swap(loads);
     for(int i = 0; i < THREAD_NUM;i++){
         runtimelist[i] = 0;
     }
-    printf("***\n***\nfinish load start runing\n***\n***\n");
+    printf("***\nfinish load start runing\n***\n");
 
     {
         YCSBLoader loader(run_path.c_str());
@@ -98,23 +105,25 @@ int main(int argc, char **argv){
         loads=loader.load();
 
         con_database();
+        cout<<"finish load run file"<<endl;
 
         std::vector<std::thread> threads;
 
         for(int i=0;i<THREAD_NUM;i++){
-            printf("creating thread %d\n",i);
             threads.push_back(std::thread(work_thread,i));
         }
+        printf("finish create %d thread ==>",THREAD_NUM);
         for(int i=0;i<THREAD_NUM;i++){
             threads[i].join();
         }
+        printf("run stop\n");
 
         unsigned long runtime=0;
         for(int i = 0;i < THREAD_NUM; i++){
             runtime += runtimelist[i];
         }
         runtime /= (THREAD_NUM);
-        printf("\n____\n run runtime:%lu\n",runtime);
+        printf("run runtime:%lu\n",runtime);
     }
 
     return 0;
@@ -158,7 +167,7 @@ void work_thread(int tid){
 #endif
     }
     runtimelist[tid]+=tracer.getRunTime();
-    printf("thread %d stop\n",tid);
+
 }
 
 void con_database(int begin_index,int end_index){
