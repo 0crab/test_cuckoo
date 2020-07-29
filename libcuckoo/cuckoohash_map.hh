@@ -595,7 +595,7 @@ public:
    */
   template <typename K> mapped_type find(const K &key) const {
     const hash_value hv = hashed_key(key);
-    const auto b = snapshot_and_lock_two<normal_mode>(hv);
+    const auto b = snapshot_and_lock_two<normal_mode>(hv,true);
     //      const size_type hp = hashpower();
 //      const size_type i1 = index_hash(hp, hv.hash);
 //      const size_type i2 = alt_index(hp, hv.partial, i1);
@@ -803,7 +803,7 @@ private:
   LIBCUCKOO_SQUELCH_PADDING_WARNING
   class LIBCUCKOO_ALIGNAS(64) spinlock {
   public:
-    spinlock() : elem_counter_(0), is_migrated_(true) { lock_.clear(); }
+    spinlock() : elem_counter_(0), is_migrated_(true),rwlock(0),write_unlock(false) { lock_.clear(); }
 
     spinlock(const spinlock &other) noexcept
         : elem_counter_(other.elem_counter()),
@@ -817,15 +817,54 @@ private:
       return *this;
     }
 
-    void lock() noexcept {
-      while (lock_.test_and_set(std::memory_order_acq_rel))
-        ;
+    inline bool isWriteLocked() {
+          return rwlock & 1;
+    }
+    inline bool isReadLocked() {
+          return rwlock & ~1;
     }
 
-    void unlock() noexcept { lock_.clear(std::memory_order_release); }
+    inline bool isLocked() {
+        return rwlock;
+    }
+
+    void lock() noexcept {
+        //printf("%lu try lock write %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+        while (1) {
+            long long v = rwlock;
+            if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
+                while (v & ~1) { // while there are still readers
+                    v = rwlock;
+                }
+                write_unlock = true;
+                return;
+            }
+        }
+    }
+
+    void lock(bool r){
+        //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+        while (1) {
+            while (isWriteLocked()) {}
+            if ((__sync_add_and_fetch(&rwlock, 2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
+            __sync_add_and_fetch(&rwlock, -2); // release our tentative read-lock
+        }
+    }
+
+
+    void unlock() noexcept {
+        if(isWriteLocked()&&write_unlock){
+            //printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+            write_unlock = false;
+            __sync_add_and_fetch(&rwlock, -1);
+        }else {
+            //printf("--------------------------%lu read unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+            __sync_add_and_fetch(&rwlock, -2);
+        }
+    }
 
     bool try_lock() noexcept {
-      return !lock_.test_and_set(std::memory_order_acq_rel);
+      return rwlock & 1;
     }
 
     counter_type &elem_counter() noexcept { return elem_counter_; }
@@ -835,6 +874,8 @@ private:
     bool is_migrated() const noexcept { return is_migrated_; }
 
   private:
+      volatile long long rwlock;
+      volatile bool write_unlock;
     std::atomic_flag lock_;
     counter_type elem_counter_;
     bool is_migrated_;
@@ -1000,6 +1041,24 @@ private:
     return TwoBuckets(locks, i1, i2, normal_mode());
   }
 
+    TwoBuckets lock_two(size_type hp, size_type i1, size_type i2,
+                        normal_mode,bool r) const {
+        size_type l1 = lock_ind(i1);
+        size_type l2 = lock_ind(i2);
+        if (l2 < l1) {
+            std::swap(l1, l2);
+        }
+        locks_t &locks = get_current_locks();
+        locks[l1].lock(r);
+        check_hashpower(hp, locks[l1]);
+        if (l2 != l1) {
+            locks[l2].lock(r);
+        }
+        rehash_lock<kIsLazy>(l1);
+        rehash_lock<kIsLazy>(l2);
+        return TwoBuckets(locks, i1, i2, normal_mode());
+    }
+
   // lock_three locks the three bucket indexes in numerical order, returning
   // the containers as a two (i1 and i2) and a one (i3). The one will not be
   // active if i3 shares a lock index with i1 or i2.
@@ -1063,6 +1122,22 @@ private:
       }
     }
   }
+
+    template <typename TABLE_MODE>
+    TwoBuckets snapshot_and_lock_two(const hash_value &hv,bool r) const {
+        while (true) {
+            // Keep the current hashpower and locks we're using to compute the buckets
+            const size_type hp = hashpower();
+            const size_type i1 = index_hash(hp, hv.hash);
+            const size_type i2 = alt_index(hp, hv.partial, i1);
+            try {
+                return lock_two(hp, i1, i2, TABLE_MODE(),r);
+            } catch (hashpower_changed &) {
+                // The hashpower changed while taking the locks. Try again.
+                continue;
+            }
+        }
+    }
 
   // lock_all takes all the locks, and returns a deleter object that releases
   // the locks upon destruction. It does NOT perform any hashpower checks, or

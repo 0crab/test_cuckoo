@@ -6,18 +6,20 @@
 
 libcuckoo::cuckoohash_map<uint64_t , uint64_t> Table;
 
-#define TEST_NUM 10000000
-#define TEST_RANGE 10000000
+#define TEST_NUM 100000
+#define TEST_RANGE 100000
 
-#define INSERT_THREAD_NUM 8
-#define READ_THREAD_NUM 8
+#define INSERT_THREAD_NUM 4
+#define READ_THREAD_NUM 4
 
 
 void insert_thread(int tid){
     for(uint64_t i = 0; i <=  TEST_NUM; ++i){
         //uint64_t v = i % 2 + 1 ;
         uint64_t key = i % TEST_RANGE;
+        //printf("%lu pre update %lu\n",pthread_self()%1000,i);
          Table.insert_or_assign(key,key );
+         //printf("%lu after update %lu\n",pthread_self()%1000,i);
     }
     printf("write thread %d stop\n",tid);
 }
@@ -26,7 +28,9 @@ void read_thread(int tid){
     for(uint64_t i = 0; i < TEST_NUM; ++i){
         uint64_t key = i % TEST_RANGE;
         uint64_t v  ;
+        //printf("--------------------------%lu pre find %lu\n",pthread_self()%1000,i);
         v = Table.find(key);
+        //printf("--------------------------%lu after find %lu\n",pthread_self()%1000,i);
         if(v != key){
             printf("error  thread %d, %lu read\n", tid, total);
             printf("key %d: value %d\n", key, v );
