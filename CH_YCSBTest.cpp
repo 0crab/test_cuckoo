@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "tracer1.h"
-#include "libcuckoo/cuckoohash_map.hh"
+#include <libcuckoo/cuckoohash_map.hh>
 
 #define DEFAULT_THREAD_NUM (8)
 #define DEFAULT_KEYS_COUNT (1 << 20)
@@ -184,8 +184,9 @@ void *measureWorker(void *args) {
         while (stopMeasure.load(memory_order_relaxed) == 0) {
             for (int i = work->tid * total_count / thread_number;
                  i < (work->tid + 1) * total_count / thread_number; i++) {
-                switch (static_cast<int>(runs[i]->getOp())) {
-                    case 0: {
+               // switch (static_cast<int>(runs[i]->getOp())) {
+                switch(3){ 
+		   case 0: {
 #if WITH_STRING
                         string ret = store->find(string(runs[i]->getKey()));
 #else
