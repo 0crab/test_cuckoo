@@ -136,9 +136,9 @@ char *cm[4] = {
 const char *existingFilePath = "./testfile.dat";
 
 namespace ycsb {
-char *loadpath = "./load.dat";
+char *loadpath = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
 
-char *runpath = "./run.dat";
+char *runpath = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
 
 char *YCSB_command[5] = {"READ", "INSERT", "DELETE", "UPDATE", "SCAN"};
 

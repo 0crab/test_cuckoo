@@ -9,6 +9,8 @@ add_executable(test_cuckoo main.cpp)
 
 add_executable(CH_HybridTest CH_HybridTest.cpp)
 
+add_executable(CH_YCSBTest CH_YCSBTest.cpp)
+
 add_executable(hellohash hellohash.cpp)
 
 add_executable(cpptest cpptest.cpp)
