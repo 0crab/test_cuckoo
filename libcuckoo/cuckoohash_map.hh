@@ -803,12 +803,12 @@ private:
   LIBCUCKOO_SQUELCH_PADDING_WARNING
   class LIBCUCKOO_ALIGNAS(64) spinlock {
   public:
-    spinlock() : elem_counter_(0), is_migrated_(true),rwlock(0),write_unlock(false) { lock_.clear(); }
+    spinlock() : elem_counter_(0), is_migrated_(true),write_unlock(false) { rwlock = 0; }
 
     spinlock(const spinlock &other) noexcept
         : elem_counter_(other.elem_counter()),
           is_migrated_(other.is_migrated()) {
-      lock_.clear();
+      rwlock = 0;
     }
 
     spinlock &operator=(const spinlock &other) noexcept {
@@ -864,7 +864,8 @@ private:
     }
 
     bool try_lock() noexcept {
-      return rwlock & 1;
+      assert(rwlock&1);
+      return !(rwlock & 1);
     }
 
     counter_type &elem_counter() noexcept { return elem_counter_; }
@@ -876,7 +877,7 @@ private:
   private:
       volatile long long rwlock;
       volatile bool write_unlock;
-    std::atomic_flag lock_;
+    //std::atomic_flag lock_;
     counter_type elem_counter_;
     bool is_migrated_;
   };
@@ -1259,7 +1260,9 @@ private:
         return pos;
       case failure_table_full:
         // Expand the table and try again, re-grabbing the locks
+        printf("rehash\n");
         cuckoo_fast_double<TABLE_MODE, automatic_resize>(hp);
+        printf("rehsah finish\n");
         b = snapshot_and_lock_two<TABLE_MODE>(hv);
         break;
       case failure_under_expansion:
