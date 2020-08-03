@@ -16,3 +16,5 @@ add_executable(hellohash hellohash.cpp)
 add_executable(cpptest cpptest.cpp)
 
 add_executable(ycsb ycsb.cpp)
+
+add_executable(ycsb_char ycsb_char.cpp)
