@@ -108,6 +108,8 @@ int main(int argc, char **argv){
         printf("run runtime:%lu\n",runtime);
     }
 
+    printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
+    printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
 
     return 0;
 }

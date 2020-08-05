@@ -18,3 +18,5 @@ add_executable(cpptest cpptest.cpp)
 add_executable(ycsb ycsb.cpp)
 
 add_executable(ycsb_char ycsb_char.cpp)
+
+#add_executable(string_test string_test.cpp)

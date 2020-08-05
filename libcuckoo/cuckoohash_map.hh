@@ -58,6 +58,8 @@ private:
 public:
   /** @name Type Declarations */
   /**@{*/
+  unsigned long  run_cuckoo_count;
+    unsigned long  run_cuckoo_loop_count;
 
   using key_type = typename buckets_t::key_type;
   using mapped_type = typename buckets_t::mapped_type;
@@ -111,7 +113,8 @@ public:
         num_remaining_lazy_rehash_locks_(0),
         minimum_load_factor_(DEFAULT_MINIMUM_LOAD_FACTOR),
         maximum_hashpower_(NO_MAXIMUM_HASHPOWER),
-        max_num_worker_threads_(0) {
+        max_num_worker_threads_(0) ,
+        run_cuckoo_count(0),run_cuckoo_loop_count(0){
     all_locks_.emplace_back(std::min(bucket_count(), size_type(kMaxNumLocks)),
                             spinlock(), get_allocator());
   }
@@ -163,7 +166,9 @@ public:
             other.num_remaining_lazy_rehash_locks_),
         minimum_load_factor_(other.minimum_load_factor_),
         maximum_hashpower_(other.maximum_hashpower_),
-        max_num_worker_threads_(other.max_num_worker_threads_) {
+        max_num_worker_threads_(other.max_num_worker_threads_),
+        run_cuckoo_count(other.run_cuckoo_count),
+        run_cuckoo_loop_count(other.run_cuckoo_loop_count){
     if (other.get_allocator() == alloc) {
       all_locks_ = other.all_locks_;
     } else {
@@ -1432,12 +1437,14 @@ private:
     // hashpower, meaning the buckets may not be valid anymore. In this
     // case, the cuckoopath functions will have thrown a hashpower_changed
     // exception, which we catch and handle here.
+    __sync_fetch_and_add(&run_cuckoo_count,1);
     size_type hp = hashpower();
     b.unlock();
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
       while (!done) {
+          __sync_fetch_and_add(&run_cuckoo_loop_count,1);
         const int depth =
             cuckoopath_search<TABLE_MODE>(hp, cuckoo_path, b.i1, b.i2);
         if (depth < 0) {
@@ -2134,6 +2141,8 @@ private:
   // Marked mutable so that const methods can rehash into this container when
   // necessary.
   mutable buckets_t buckets_;
+
+
 
   // An old container of buckets, containing data that may not have been
   // rehashed into the current one. If valid, this will always have a hashpower

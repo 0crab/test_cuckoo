@@ -9,8 +9,8 @@ libcuckoo::cuckoohash_map<uint64_t , uint64_t> Table;
 #define TEST_NUM 1000000
 #define TEST_RANGE 1000000
 
-#define INSERT_THREAD_NUM 1
-#define READ_THREAD_NUM 0
+#define INSERT_THREAD_NUM 4
+#define READ_THREAD_NUM 4
 
 
 void insert_thread(int tid){
@@ -69,4 +69,6 @@ int main() {
         read_threads[i].join();
     }
 
+    printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
+    printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
 }
