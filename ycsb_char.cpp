@@ -111,6 +111,11 @@ int main(int argc, char **argv){
     printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
     printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
 
+    unsigned long *p = Table.path_length_count;
+    for(int i =0;i < Table.MAX_BFS_PATH_LEN;i++){
+        printf("path len %d:%lu\n",i,p[i]);
+    }
+
     return 0;
 }
 

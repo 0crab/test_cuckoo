@@ -58,8 +58,15 @@ private:
 public:
   /** @name Type Declarations */
   /**@{*/
+
+    // The maximum number of items in a cuckoo BFS path. It determines the
+    // maximum number of slots we search when cuckooing.
+    static constexpr uint8_t MAX_BFS_PATH_LEN = 5;
+
+
   unsigned long  run_cuckoo_count;
-    unsigned long  run_cuckoo_loop_count;
+  unsigned long  run_cuckoo_loop_count;
+  unsigned long * path_length_count;
 
   using key_type = typename buckets_t::key_type;
   using mapped_type = typename buckets_t::mapped_type;
@@ -115,6 +122,7 @@ public:
         maximum_hashpower_(NO_MAXIMUM_HASHPOWER),
         max_num_worker_threads_(0) ,
         run_cuckoo_count(0),run_cuckoo_loop_count(0){
+      path_length_count = new unsigned long[MAX_BFS_PATH_LEN]();
     all_locks_.emplace_back(std::min(bucket_count(), size_type(kMaxNumLocks)),
                             spinlock(), get_allocator());
   }
@@ -168,7 +176,8 @@ public:
         maximum_hashpower_(other.maximum_hashpower_),
         max_num_worker_threads_(other.max_num_worker_threads_),
         run_cuckoo_count(other.run_cuckoo_count),
-        run_cuckoo_loop_count(other.run_cuckoo_loop_count){
+        run_cuckoo_loop_count(other.run_cuckoo_loop_count),
+        path_length_count(other.path_length_count){
     if (other.get_allocator() == alloc) {
       all_locks_ = other.all_locks_;
     } else {
@@ -200,7 +209,10 @@ public:
             other.num_remaining_lazy_rehash_locks_),
         minimum_load_factor_(other.minimum_load_factor_),
         maximum_hashpower_(other.maximum_hashpower_),
-        max_num_worker_threads_(other.max_num_worker_threads_) {
+        max_num_worker_threads_(other.max_num_worker_threads_),
+        run_cuckoo_count(other.run_cuckoo_count),
+    run_cuckoo_loop_count(other.run_cuckoo_loop_count),
+    path_length_count(other.path_length_count) {
     if (other.get_allocator() == alloc) {
       all_locks_ = std::move(other.all_locks_);
     } else {
@@ -229,7 +241,9 @@ public:
    * @param other the map to exchange contents with
    */
   void swap(cuckoohash_map &other) noexcept {
-    std::swap(hash_fn_, other.hash_fn_);
+      printf("swap\n");
+      exit(-1);
+      std::swap(hash_fn_, other.hash_fn_);
     std::swap(eq_fn_, other.eq_fn_);
     buckets_.swap(other.buckets_);
     all_locks_.swap(other.all_locks_);
@@ -1402,9 +1416,6 @@ private:
     hash_value hv;
   } CuckooRecord;
 
-  // The maximum number of items in a cuckoo BFS path. It determines the
-  // maximum number of slots we search when cuckooing.
-  static constexpr uint8_t MAX_BFS_PATH_LEN = 5;
 
   // An array of CuckooRecords
   using CuckooRecords = std::array<CuckooRecord, MAX_BFS_PATH_LEN>;
@@ -1450,7 +1461,7 @@ private:
         if (depth < 0) {
           break;
         }
-
+        __sync_fetch_and_add(path_length_count+depth,1);
         if (cuckoopath_move<TABLE_MODE>(hp, cuckoo_path, depth, b)) {
           insert_bucket = cuckoo_path[0].bucket;
           insert_slot = cuckoo_path[0].slot;
