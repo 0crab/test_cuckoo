@@ -67,6 +67,16 @@ public:
   unsigned long  run_cuckoo_count;
   unsigned long  run_cuckoo_loop_count;
   unsigned long * path_length_count;
+  void show_not_migrated_num(){
+      unsigned long not_migrated_num = 0;
+      locks_t &current_locks = get_current_locks();
+      for (size_t i = 0; i < current_locks.size(); ++i) {
+          if(!current_locks[i].is_migrated()){
+              not_migrated_num ++;
+          }
+      }
+      printf("not migrated num :%lu\n",not_migrated_num);
+  }
 
   using key_type = typename buckets_t::key_type;
   using mapped_type = typename buckets_t::mapped_type;
@@ -1448,20 +1458,20 @@ private:
     // hashpower, meaning the buckets may not be valid anymore. In this
     // case, the cuckoopath functions will have thrown a hashpower_changed
     // exception, which we catch and handle here.
-    __sync_fetch_and_add(&run_cuckoo_count,1);
+    //__sync_fetch_and_add(&run_cuckoo_count,1);
     size_type hp = hashpower();
     b.unlock();
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
       while (!done) {
-          __sync_fetch_and_add(&run_cuckoo_loop_count,1);
+          //__sync_fetch_and_add(&run_cuckoo_loop_count,1);
         const int depth =
             cuckoopath_search<TABLE_MODE>(hp, cuckoo_path, b.i1, b.i2);
         if (depth < 0) {
           break;
         }
-        __sync_fetch_and_add(path_length_count+depth,1);
+        //__sync_fetch_and_add(path_length_count+depth,1);
         if (cuckoopath_move<TABLE_MODE>(hp, cuckoo_path, depth, b)) {
           insert_bucket = cuckoo_path[0].bucket;
           insert_slot = cuckoo_path[0].slot;

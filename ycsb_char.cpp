@@ -81,7 +81,11 @@ int main(int argc, char **argv){
         runtime /= (THREAD_NUM);
         printf("load runtime:%lu\n",runtime);
     }
-
+    Table.show_not_migrated_num();
+    for(int i = 0; i < THREAD_NUM;i++){
+        runtimelist[i] = 0;
+    }
+    printf("***\nfinish load start runing\n***\n");
     {
         YCSBLoader loader1(run_path.c_str());
 
@@ -108,13 +112,13 @@ int main(int argc, char **argv){
         printf("run runtime:%lu\n",runtime);
     }
 
-    printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
-    printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
-
-    unsigned long *p = Table.path_length_count;
-    for(int i =0;i < Table.MAX_BFS_PATH_LEN;i++){
-        printf("path len %d:%lu\n",i,p[i]);
-    }
+//    printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
+//    printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
+//
+//    unsigned long *p = Table.path_length_count;
+//    for(int i =0;i < Table.MAX_BFS_PATH_LEN;i++){
+//        printf("path len %d:%lu\n",i,p[i]);
+//    }
 
     return 0;
 }
