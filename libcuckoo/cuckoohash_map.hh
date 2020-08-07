@@ -887,6 +887,7 @@ private:
               while (v & ~1) { // while there are still readers
                   v = rwlock;
               }
+              write_unlock = true;
               return true;
           }
           return false;
