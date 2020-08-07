@@ -880,9 +880,20 @@ private:
         }
     }
 
+      inline bool try_upgradeLock() {
+          long long v = rwlock;
+          if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
+              __sync_add_and_fetch(&rwlock, -2);
+              while (v & ~1) { // while there are still readers
+                  v = rwlock;
+              }
+              return true;
+          }
+          return false;
+      }
 
     void unlock() noexcept {
-        if(isWriteLocked()&&write_unlock){
+        if(isWriteLocked() && write_unlock){
             //printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
             write_unlock = false;
             __sync_add_and_fetch(&rwlock, -1);
@@ -1079,13 +1090,42 @@ private:
             std::swap(l1, l2);
         }
         locks_t &locks = get_current_locks();
-        locks[l1].lock(r);
-        check_hashpower(hp, locks[l1]);
-        if (l2 != l1) {
-            locks[l2].lock(r);
+
+        while(true) {
+            locks[l1].lock(r);
+            check_hashpower(hp, locks[l1]);
+            if (locks[l1].is_migrated()) {
+                break; //no need to migrate
+            }else{
+                if (locks[l1].try_upgradeLock()) {
+                    rehash_lock<kIsLazy>(l1);
+                    //TODO need to degrade lock here
+                    break; //migrate finish
+                } else {
+                    locks[l1].unlock(); //other thread try migrating now ,just release read lock and lock again
+                }
+            }
         }
-        rehash_lock<kIsLazy>(l1);
-        rehash_lock<kIsLazy>(l2);
+
+        while(true){
+            if (l2 != l1) {
+                locks[l2].lock(r);
+                if (locks[l2].is_migrated()) {
+                    break; //no need to migrate
+                }else{
+                    if (locks[l1].try_upgradeLock()) {
+                        rehash_lock<kIsLazy>(l2);
+                        //TODO need to degrade lock here
+                        break; //migrate finish
+                    } else {
+                        locks[l2].unlock(); //other thread try migrating now ,just release read lock and lock again
+                    }
+                }
+            }else{
+                break;//there are just one bucket need to be locked,and must have been migrated
+            }
+        }
+
         return TwoBuckets(locks, i1, i2, normal_mode());
     }
 
