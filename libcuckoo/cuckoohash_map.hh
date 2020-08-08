@@ -893,6 +893,11 @@ private:
           return false;
       }
 
+    inline void degradeLock(){
+        write_unlock = false;
+        __sync_add_and_fetch(&rwlock,1);
+    }
+
     void unlock() noexcept {
         if(isWriteLocked() && write_unlock){
             //printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
@@ -1100,7 +1105,7 @@ private:
             }else{
                 if (locks[l1].try_upgradeLock()) {
                     rehash_lock<kIsLazy>(l1);
-                    //TODO need to degrade lock here
+                    locks[l1].degradeLock();
                     break; //migrate finish
                 } else {
                     locks[l1].unlock(); //other thread try migrating now ,just release read lock and lock again
@@ -1114,9 +1119,9 @@ private:
                 if (locks[l2].is_migrated()) {
                     break; //no need to migrate
                 }else{
-                    if (locks[l1].try_upgradeLock()) {
+                    if (locks[l2].try_upgradeLock()) {
                         rehash_lock<kIsLazy>(l2);
-                        //TODO need to degrade lock here
+                        locks[l2].degradeLock();
                         break; //migrate finish
                     } else {
                         locks[l2].unlock(); //other thread try migrating now ,just release read lock and lock again
