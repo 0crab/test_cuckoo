@@ -1061,6 +1061,30 @@ private:
     return LockManager(&lock);
   }
 
+
+    LockManager lock_one(size_type hp, size_type i, normal_mode,bool r) const {
+        locks_t &locks = get_current_locks();
+        const size_type l = lock_ind(i);
+        spinlock &lock = locks[l];
+
+        while(true) {
+            lock.lock(r);
+            check_hashpower(hp, lock);
+            if (lock.is_migrated()) {
+                break; //no need to migrate
+            }else{
+                if (lock.try_upgradeLock()) {
+                    rehash_lock<kIsLazy>(l);
+                    lock.degradeLock();
+                    break; //migrate finish
+                } else {
+                    lock.unlock(); //other thread try migrating now ,just release read lock and lock again
+                }
+            }
+        }
+        return LockManager(&lock);
+    }
+
   // locks the two bucket indexes, always locking the earlier index first to
   // avoid deadlock. If the two indexes are the same, it just locks one.
   //
@@ -1573,7 +1597,7 @@ private:
       first.bucket = i2;
     }
     {
-      const auto lock_manager = lock_one(hp, first.bucket, TABLE_MODE());
+      const auto lock_manager = lock_one(hp, first.bucket, TABLE_MODE(),true);
       const bucket &b = buckets_[first.bucket];
       if (!b.occupied(first.slot)) {
         // We can terminate here
@@ -1590,7 +1614,7 @@ private:
       // We get the bucket that this slot is on by computing the alternate
       // index of the previous bucket
       curr.bucket = alt_index(hp, prev.hv.partial, prev.bucket);
-      const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE());
+      const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE(),true);
       const bucket &b = buckets_[curr.bucket];
       if (!b.occupied(curr.slot)) {
         // We can terminate here
@@ -1774,7 +1798,7 @@ private:
     q.enqueue(b_slot(i2, 1, 0));
     while (!q.empty()) {
       b_slot x = q.dequeue();
-      auto lock_manager = lock_one(hp, x.bucket, TABLE_MODE());
+      auto lock_manager = lock_one(hp, x.bucket, TABLE_MODE(),true);
       bucket &b = buckets_[x.bucket];
       // Picks a (sort-of) random slot to start from
       size_type starting_slot = x.pathcode % slot_per_bucket();
