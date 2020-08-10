@@ -76,6 +76,8 @@ public:
           }
       }
       printf("not migrated num :%lu\n",not_migrated_num);
+      printf("hashpower :%lu\n",hashpower());
+      printf("locksize :%lu\n",std::prev(all_locks_.end())->size());
   }
 
   using key_type = typename buckets_t::key_type;
@@ -629,8 +631,10 @@ public:
 //      const size_type i1 = index_hash(hp, hv.hash);
 //      const size_type i2 = alt_index(hp, hv.partial, i1);
     const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
+      auto a =  buckets_[pos.index].mapped(pos.slot);
+      return a;
     if (pos.status == ok) {
-      return buckets_[pos.index].mapped(pos.slot);
+        return  buckets_[pos.index].mapped(pos.slot);
     } else {
       throw std::out_of_range("key not found in table");
     }
