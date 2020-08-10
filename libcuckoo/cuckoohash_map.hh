@@ -631,14 +631,25 @@ public:
 //      const size_type i1 = index_hash(hp, hv.hash);
 //      const size_type i2 = alt_index(hp, hv.partial, i1);
     const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
-      auto a =  buckets_[pos.index].mapped(pos.slot);
-      return a;
     if (pos.status == ok) {
         return  buckets_[pos.index].mapped(pos.slot);
     } else {
       throw std::out_of_range("key not found in table");
     }
   }
+
+    template <typename K> bool find_KV(const K &key, mapped_type &val) const {
+        const hash_value hv = hashed_key(key);
+        const auto b = snapshot_and_lock_two<normal_mode>(hv,true);
+        const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
+        if (pos.status == ok) {
+            val = buckets_[pos.index].mapped(pos.slot);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
 
   /**
    * Returns whether or not @p key is in the table. Equivalent to @ref

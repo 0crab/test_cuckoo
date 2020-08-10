@@ -141,7 +141,9 @@ void work_thread(int tid,bool load){
 #if(!CHECK_FIND)
         if(!it->getOp()){
             try {
-                string res = Table.find(it->getKey());
+                string s;
+                //string res = Table.find(it->getKey());
+                Table.find_KV(it->getKey(),s);
             }catch (const std::out_of_range& e){
                 std::cout<<e.what()<<endl;
                 exit(-1);
