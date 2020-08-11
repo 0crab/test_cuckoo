@@ -578,17 +578,34 @@ public:
   template <typename K, typename F, typename... Args>
   bool uprase_fn(K &&key, F fn, Args &&... val) {
     hash_value hv = hashed_key(key);
-    auto b = snapshot_and_lock_two<normal_mode>(hv);
-    table_position pos = cuckoo_insert_loop<normal_mode>(hv, b, key);
-    if (pos.status == ok) {
-      add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
-                    std::forward<Args>(val)...);
-    } else {
-      if (fn(buckets_[pos.index].mapped(pos.slot))) {
-        del_from_bucket(pos.index, pos.slot);
-      }
+    while(true){
+        auto b = snapshot_and_lock_two<normal_mode>(hv,true);
+        table_position pos = cuckoo_insert_loop<normal_mode>(hv, b, key);
+        if(b.get_after_cuckoo()){
+            if (pos.status == ok) {
+                add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                              std::forward<Args>(val)...);
+            } else {
+                if (fn(buckets_[pos.index].mapped(pos.slot))) {
+                    del_from_bucket(pos.index, pos.slot);
+                }
+            }
+            return pos.status == ok;
+        }else{
+            if(b.try_upgrade(pos.index)){
+                if (pos.status == ok) {
+                    add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                                  std::forward<Args>(val)...);
+                } else {
+                    if (fn(buckets_[pos.index].mapped(pos.slot))) {
+                        del_from_bucket(pos.index, pos.slot);
+                    }
+                }
+                return pos.status == ok;
+            }
+        }
     }
-    return pos.status == ok;
+
   }
 
   /**
@@ -972,20 +989,31 @@ private:
   public:
     TwoBuckets() {}
     TwoBuckets(size_type i1_, size_type i2_, locked_table_mode)
-        : i1(i1_), i2(i2_) {}
+        : i1(i1_), i2(i2_),after_cuckoo(false) {}
     TwoBuckets(locks_t &locks, size_type i1_, size_type i2_, normal_mode)
         : i1(i1_), i2(i2_), first_manager_(&locks[lock_ind(i1)]),
           second_manager_((lock_ind(i1) != lock_ind(i2)) ? &locks[lock_ind(i2)]
-                                                         : nullptr) {}
+                                                         : nullptr),after_cuckoo(false) {}
 
     void unlock() {
       first_manager_.reset();
       second_manager_.reset();
     }
 
+
+    bool try_upgrade(size_type index){
+      LockManager & Lock = index == i1? first_manager_:second_manager_;
+      return Lock.get()->try_upgradeLock();
+    }
+
+    void set_after_cuckoo(){this->after_cuckoo = true;}
+
+    bool get_after_cuckoo(){return this->after_cuckoo;}
+
     size_type i1, i2;
 
   private:
+      bool after_cuckoo;
     LockManager first_manager_, second_manager_;
   };
 
@@ -1377,12 +1405,12 @@ private:
         printf("rehash\n");
         cuckoo_fast_double<TABLE_MODE, automatic_resize>(hp);
         printf("rehsah finish\n");
-        b = snapshot_and_lock_two<TABLE_MODE>(hv);
+        b = snapshot_and_lock_two<TABLE_MODE>(hv,true);
         break;
       case failure_under_expansion:
         // The table was under expansion while we were cuckooing. Re-grab the
         // locks and try again.
-        b = snapshot_and_lock_two<TABLE_MODE>(hv);
+        b = snapshot_and_lock_two<TABLE_MODE>(hv,true);
         break;
       default:
         assert(false);
@@ -1662,6 +1690,7 @@ private:
       assert(bucket_i == b.i1 || bucket_i == b.i2);
       b = lock_two(hp, b.i1, b.i2, TABLE_MODE());
       if (!buckets_[bucket_i].occupied(cuckoo_path[0].slot)) {
+          b.set_after_cuckoo();
         return true;
       } else {
         b.unlock();
@@ -1713,6 +1742,7 @@ private:
       }
       depth--;
     }
+    b.set_after_cuckoo();
     return true;
   }
 
