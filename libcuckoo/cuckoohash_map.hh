@@ -1002,8 +1002,13 @@ private:
 
 
     bool try_upgrade(size_type index){
-      LockManager & Lock = index == i1? first_manager_:second_manager_;
-      return Lock.get()->try_upgradeLock();
+        if(index == i1 ){
+            return first_manager_.get()->try_upgradeLock();
+        }else{
+            return first_manager_.get()->try_upgradeLock() &&
+                        second_manager_.get()->try_upgradeLock();
+        }
+
     }
 
     void set_after_cuckoo(){this->after_cuckoo = true;}
