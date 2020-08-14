@@ -578,10 +578,14 @@ public:
   template <typename K, typename F, typename... Args>
   bool uprase_fn(K &&key, F fn, Args &&... val) {
     hash_value hv = hashed_key(key);
-    while(true){
-        auto b = snapshot_and_lock_two<normal_mode>(hv,true);
+    while(true) {
+        TwoBuckets b = snapshot_and_lock_two<normal_mode>(hv, true);
+        assert(b.is_read_lock(b.i1) && b.is_read_lock(b.i2));
         table_position pos = cuckoo_insert_loop<normal_mode>(hv, b, key);
-        if(b.get_after_cuckoo()){
+        if (b.get_after_cuckoo()) {
+            assert(false);
+            assert(b.onelock && b.is_write_lock(b.i1) ||
+                   !b.onelock && b.is_write_lock(b.i1) && b.is_write_lock(b.i2));
             if (pos.status == ok) {
                 add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
                               std::forward<Args>(val)...);
@@ -591,8 +595,18 @@ public:
                 }
             }
             return pos.status == ok;
-        }else{
-            if(b.try_upgrade(pos.index)){
+        } else {
+            assert(b.is_read_lock(b.i1) && b.is_read_lock(b.i2));
+            if (b.try_upgrade(pos.index)) {
+                if(!b.is_write_lock(pos.index)){
+                    int anj=1;
+                }
+                //assert(b.is_write_lock(pos.index));
+                if(pos.index == b.i1){
+                    assert(lock_ind(b.i1) < lock_ind(b.i2) || b.is_write_lock(b.i2));
+                }else{
+                    assert(lock_ind(b.i2) < lock_ind(b.i1) || b.is_write_lock(b.i1));
+                }
                 if (pos.status == ok) {
                     add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
                                   std::forward<Args>(val)...);
@@ -601,8 +615,10 @@ public:
                         del_from_bucket(pos.index, pos.slot);
                     }
                 }
+
                 return pos.status == ok;
             }
+            int a=1;
         }
     }
 
@@ -879,8 +895,10 @@ private:
     }
 
     inline bool isWriteLocked() {
-          return rwlock & 1;
+          return rwlock == 1;
     }
+
+
     inline bool isReadLocked() {
           return rwlock & ~1;
     }
@@ -906,7 +924,7 @@ private:
     void lock(bool r){
         //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
         while (1) {
-            while (isWriteLocked()) {}
+            while (rwlock & 1) {}
             if ((__sync_add_and_fetch(&rwlock, 2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
             __sync_add_and_fetch(&rwlock, -2); // release our tentative read-lock
         }
@@ -991,9 +1009,14 @@ private:
     TwoBuckets(size_type i1_, size_type i2_, locked_table_mode)
         : i1(i1_), i2(i2_),after_cuckoo(false) {}
     TwoBuckets(locks_t &locks, size_type i1_, size_type i2_, normal_mode)
-        : i1(i1_), i2(i2_), first_manager_(&locks[lock_ind(i1)]),
-          second_manager_((lock_ind(i1) != lock_ind(i2)) ? &locks[lock_ind(i2)]
-                                                         : nullptr),after_cuckoo(false) {}
+        : i1(i1_), i2(i2_),
+        l1(lock_ind(i1)<lock_ind(i2)?lock_ind(i1):lock_ind(i2)),
+        l2(lock_ind(i1)<lock_ind(i2)?lock_ind(i2):lock_ind(i1)),
+        onelock(l1 == l2),
+        first_manager_(&locks[l1]),
+        second_manager_(onelock ? nullptr : &locks[l2]),
+        after_cuckoo(false) {
+    }
 
     void unlock() {
       first_manager_.reset();
@@ -1002,24 +1025,50 @@ private:
 
 
     bool try_upgrade(size_type index){
-        if(index == i1 ){
+        if(onelock){
             return first_manager_.get()->try_upgradeLock();
         }else{
-            return first_manager_.get()->try_upgradeLock() &&
-                        second_manager_.get()->try_upgradeLock();
+            if(lock_ind(index) == l1 ){
+                return first_manager_.get()->try_upgradeLock();
+            }else{
+                return first_manager_.get()->try_upgradeLock() &&
+                    second_manager_.get()->try_upgradeLock();
+            }
+        }
+    }
+
+    void set_after_cuckoo(){after_cuckoo = true;}
+
+    bool get_after_cuckoo(){return after_cuckoo;}
+
+    bool is_read_lock(size_type index){
+        if(onelock){
+            return first_manager_.get()->isReadLocked();
+        }else{
+            LockManager &Lock = lock_ind(index) == l1? first_manager_:second_manager_;
+            return Lock.get()->isReadLocked();
         }
 
     }
 
-    void set_after_cuckoo(){this->after_cuckoo = true;}
+      bool is_write_lock(size_type index){
+          if(onelock){
+              return first_manager_.get()->isWriteLocked();
+          }else{
+              LockManager &Lock = lock_ind(index) == l1? first_manager_:second_manager_;
+              return Lock.get()->isWriteLocked();
+          }
+      }
 
-    bool get_after_cuckoo(){return this->after_cuckoo;}
+      bool after_cuckoo;
 
     size_type i1, i2;
+    size_type l1,l2;
+    bool onelock;
+      LockManager first_manager_, second_manager_;
 
   private:
-      bool after_cuckoo;
-    LockManager first_manager_, second_manager_;
+
   };
 
   struct AllUnlocker {
@@ -1487,6 +1536,7 @@ private:
         pos.status = failure_key_duplicated;
         return pos;
       }
+      assert(b.get_after_cuckoo());
       return table_position{insert_bucket, insert_slot, ok};
     }
     assert(st == failure);
@@ -1576,14 +1626,14 @@ private:
     // hashpower, meaning the buckets may not be valid anymore. In this
     // case, the cuckoopath functions will have thrown a hashpower_changed
     // exception, which we catch and handle here.
-    //__sync_fetch_and_add(&run_cuckoo_count,1);
+    __sync_fetch_and_add(&run_cuckoo_count,1);
     size_type hp = hashpower();
     b.unlock();
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
       while (!done) {
-          //__sync_fetch_and_add(&run_cuckoo_loop_count,1);
+          __sync_fetch_and_add(&run_cuckoo_loop_count,1);
         const int depth =
             cuckoopath_search<TABLE_MODE>(hp, cuckoo_path, b.i1, b.i2);
         if (depth < 0) {

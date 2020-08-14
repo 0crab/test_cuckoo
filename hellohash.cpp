@@ -10,7 +10,7 @@ libcuckoo::cuckoohash_map<uint64_t , uint64_t> Table;
 #define TEST_RANGE 1000000
 
 #define INSERT_THREAD_NUM 4
-#define READ_THREAD_NUM 4
+#define READ_THREAD_NUM 0
 
 
 void insert_thread(int tid){
@@ -29,7 +29,8 @@ void read_thread(int tid){
         uint64_t key = i % TEST_RANGE;
         uint64_t v  ;
         //printf("--------------------------%lu pre find %lu\n",pthread_self()%1000,i);
-        v = Table.find(key);
+        //v = Table.find(key);
+        Table.find_KV(key,v);
         //printf("--------------------------%lu after find %lu\n",pthread_self()%1000,i);
         if(v != key){
             printf("error  thread %d, %lu read\n", tid, total);
@@ -71,6 +72,8 @@ int main() {
 
     printf("run_cuckoo_count:%lu\n",Table.run_cuckoo_count);
     printf("run_cuckoo_loop_count:%lu\n",Table.run_cuckoo_loop_count);
+
+    printf("hash power :%lu\n",Table.hashpower());
 
     unsigned long *p = Table.path_length_count;
     for(int i =0;i < Table.MAX_BFS_PATH_LEN;i++){
