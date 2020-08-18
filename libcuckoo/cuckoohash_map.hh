@@ -598,10 +598,11 @@ public:
         } else {
             assert(b.is_read_lock(b.i1) && b.is_read_lock(b.i2));
             if (b.try_upgrade(pos.index)) {
-                if(!b.is_write_lock(pos.index)){
-                    int anj=1;
-                }
-                //assert(b.is_write_lock(pos.index));
+
+//                if(!b.is_write_lock(pos.index)){
+//                    int anj=1;
+//                }
+                assert(b.is_write_lock(pos.index));
                 if(pos.index == b.i1){
                     assert(lock_ind(b.i1) < lock_ind(b.i2) || b.is_write_lock(b.i2));
                 }else{
@@ -895,7 +896,7 @@ private:
     }
 
     inline bool isWriteLocked() {
-          return rwlock == 1;
+          return rwlock & 1;
     }
 
 
@@ -924,7 +925,7 @@ private:
     void lock(bool r){
         //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
         while (1) {
-            while (rwlock & 1) {}
+            while (isWriteLocked()) {}
             if ((__sync_add_and_fetch(&rwlock, 2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
             __sync_add_and_fetch(&rwlock, -2); // release our tentative read-lock
         }
