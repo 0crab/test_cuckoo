@@ -7,10 +7,10 @@
 libcuckoo::cuckoohash_map<uint64_t , uint64_t> Table;
 
 #define TEST_NUM 1000000
-#define TEST_RANGE 10000
+#define TEST_RANGE 1000000
 
 #define INSERT_THREAD_NUM 4
-#define READ_THREAD_NUM 0
+#define READ_THREAD_NUM 4
 
 
 void insert_thread(int tid){
@@ -27,7 +27,7 @@ void read_thread(int tid){
     uint64_t total =0;
     for(uint64_t i = 0; i < TEST_NUM; ++i){
         uint64_t key = i % TEST_RANGE;
-        uint64_t v  ;
+        uint64_t v = 0;
         //printf("--------------------------%lu pre find %lu\n",pthread_self()%1000,i);
         v = Table.find(key);
         //printf("--------------------------%lu after find %lu\n",pthread_self()%1000,i);

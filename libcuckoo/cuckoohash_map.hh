@@ -639,7 +639,7 @@ public:
    */
   template <typename K> mapped_type find(const K &key) const {
     const hash_value hv = hashed_key(key);
-    const auto b = snapshot_and_lock_two<normal_mode>(hv,true);
+    const TwoBuckets b = snapshot_and_lock_two<normal_mode>(hv,true);
     //      const size_type hp = hashpower();
 //      const size_type i1 = index_hash(hp, hv.hash);
 //      const size_type i2 = alt_index(hp, hv.partial, i1);
@@ -889,6 +889,7 @@ private:
         //printf("%lu try lock write %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
         while (1) {
             long long v = rwlock;
+            //CAS will fail is other thread sets read lock between these two statement
             if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
                 while (v & ~1) { // while there are still readers
                     v = rwlock;
@@ -1196,6 +1197,7 @@ private:
              locks[b.l2].lock();
              //lock1 must not be release here;so its no need to check hashpower
              rehash_lock<kIsLazy>(b.l2);
+             b.lock_second(locks);
          }
     }
 
