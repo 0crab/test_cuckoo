@@ -844,104 +844,108 @@ private:
   // Instead, we'll mark all of the locks as not migrated. So anybody trying to
   // acquire the lock must also migrate the corresponding buckets if
   // !is_migrated.
+
   LIBCUCKOO_SQUELCH_PADDING_WARNING
   class LIBCUCKOO_ALIGNAS(64) spinlock {
-  public:
-    spinlock() : elem_counter_(0), is_migrated_(true),write_unlock(false) { rwlock = 0; }
+    public:
 
-    spinlock(const spinlock &other) noexcept
-        : elem_counter_(other.elem_counter()),
-          is_migrated_(other.is_migrated()) {
-      rwlock = 0;
-    }
+        spinlock() : elem_counter_(0),is_migrated_(true),write_unlock(false),lock_(0) {  }
 
-    spinlock &operator=(const spinlock &other) noexcept {
-      elem_counter() = other.elem_counter();
-      is_migrated() = other.is_migrated();
-      return *this;
-    }
+        spinlock(const spinlock &other) noexcept
+                :elem_counter_(other.elem_counter()),
+                 is_migrated_(other.is_migrated()),
+                 lock_(0) {
+        }
 
-    inline bool isWriteLocked() {
-          return rwlock & 1;
-    }
-    inline bool isReadLocked() {
-          return rwlock & ~1;
-    }
+        spinlock &operator=(const spinlock &other) noexcept {
+            elem_counter() = other.elem_counter();
+            is_migrated() = other.is_migrated();
+            return *this;
+        }
 
-    inline bool isLocked() {
-        return rwlock;
-    }
+        inline bool isWriteLocked() {
+            return lock_.load() & 1;
+        }
 
-    void lock() noexcept {
-        //printf("%lu try lock write %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-        while (1) {
-            long long v = rwlock;
-            if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
-                while (v & ~1) { // while there are still readers
-                    v = rwlock;
+
+        inline bool isReadLocked() {
+            return lock_.load() & ~1;
+        }
+
+        inline bool isLocked() {
+            return lock_.load();
+        }
+
+        void lock() noexcept {
+            //printf("%lu try lock write %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+            while (1) {
+                uint64_t expected = lock_.load() & ~1;
+                if(lock_.compare_exchange_strong(expected , expected | 1)){
+                    while(expected){
+                        expected = lock_.load() & ~1; //an extra judgment
+                    }
+                    write_unlock = true;
+                    return;
                 }
-                write_unlock = true;
-                return;
             }
         }
-    }
 
-    void lock(bool r){
-        //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-        while (1) {
-            while (isWriteLocked()) {}
-            if ((__sync_add_and_fetch(&rwlock, 2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
-            __sync_add_and_fetch(&rwlock, -2); // release our tentative read-lock
+        void lock(bool r){
+            //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+            while (1) {
+                while (lock_.load() & 1) {}
+                if ((lock_.fetch_add(2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
+                lock_.fetch_add(-2); // release our tentative read-lock
+            }
         }
-    }
 
-      inline bool try_upgradeLock() {
-          long long v = rwlock;
-          if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
-              __sync_add_and_fetch(&rwlock, -2);
-              while (v & ~1) { // while there are still readers
-                  v = rwlock;
-              }
-              write_unlock = true;
-              return true;
-          }
-          return false;
-      }
+        inline bool try_upgradeLock() {
+            uint64_t expected = lock_.load() & ~1;
+            if (lock_.compare_exchange_strong(expected,expected | 1)) {
+                lock_.fetch_add(-2);
+                while (expected) { // while there are still readers
+                    expected = lock_.load() & ~1;
+                }
+                write_unlock = true;
+                return true;
+            }
+            return false;
+        }
 
-    inline void degradeLock(){
-        write_unlock = false;
-        __sync_add_and_fetch(&rwlock,1);
-    }
-
-    void unlock() noexcept {
-        if(isWriteLocked() && write_unlock){
-            //printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+        inline void degradeLock(){
             write_unlock = false;
-            __sync_add_and_fetch(&rwlock, -1);
-        }else {
-            //printf("--------------------------%lu read unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-            __sync_add_and_fetch(&rwlock, -2);
+            lock_.fetch_add(1);
         }
-    }
 
-    bool try_lock() noexcept {
-      assert(rwlock&1);
-      return !(rwlock & 1);
-    }
 
-    counter_type &elem_counter() noexcept { return elem_counter_; }
-    counter_type elem_counter() const noexcept { return elem_counter_; }
+        void unlock() noexcept {
+            if(isWriteLocked() && write_unlock){
+                // printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+                write_unlock = false;
+                lock_.fetch_add(-1);
+            }else {
+                assert(lock_.load() != 1);
+                // printf("--------------------------%lu read unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
+                lock_.fetch_add(-2);
+            }
+        }
 
-    bool &is_migrated() noexcept { return is_migrated_; }
-    bool is_migrated() const noexcept { return is_migrated_; }
+        bool try_lock() noexcept {
+            return !(lock_.load() & 1);
+        }
 
-  private:
-      volatile long long rwlock;
-      volatile bool write_unlock;
-    //std::atomic_flag lock_;
-    counter_type elem_counter_;
-    bool is_migrated_;
-  };
+        counter_type &elem_counter() noexcept { return elem_counter_; }
+        counter_type elem_counter() const noexcept { return elem_counter_; }
+
+        bool &is_migrated() noexcept { return is_migrated_; }
+        bool is_migrated() const noexcept { return is_migrated_; }
+
+        std::atomic<uint64_t>  lock_;
+    private:
+        volatile bool write_unlock;
+        counter_type elem_counter_;
+        bool is_migrated_;
+    };
 
   template <typename U>
   using rebind_alloc =
