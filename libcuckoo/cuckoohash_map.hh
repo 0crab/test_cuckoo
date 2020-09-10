@@ -28,6 +28,9 @@
 #include "cuckoohash_util.hh"
 #include "bucket_container.hh"
 
+
+#define SPINLOCK 1
+
 namespace libcuckoo {
 
 /**
@@ -58,27 +61,6 @@ private:
 public:
   /** @name Type Declarations */
   /**@{*/
-
-    // The maximum number of items in a cuckoo BFS path. It determines the
-    // maximum number of slots we search when cuckooing.
-    static constexpr uint8_t MAX_BFS_PATH_LEN = 5;
-
-
-  unsigned long  run_cuckoo_count;
-  unsigned long  run_cuckoo_loop_count;
-  unsigned long * path_length_count;
-  void show_not_migrated_num(){
-      unsigned long not_migrated_num = 0;
-      locks_t &current_locks = get_current_locks();
-      for (size_t i = 0; i < current_locks.size(); ++i) {
-          if(!current_locks[i].is_migrated()){
-              not_migrated_num ++;
-          }
-      }
-      printf("not migrated num :%lu\n",not_migrated_num);
-      printf("hashpower :%lu\n",hashpower());
-      printf("locksize :%lu\n",std::prev(all_locks_.end())->size());
-  }
 
   using key_type = typename buckets_t::key_type;
   using mapped_type = typename buckets_t::mapped_type;
@@ -132,9 +114,7 @@ public:
         num_remaining_lazy_rehash_locks_(0),
         minimum_load_factor_(DEFAULT_MINIMUM_LOAD_FACTOR),
         maximum_hashpower_(NO_MAXIMUM_HASHPOWER),
-        max_num_worker_threads_(0) ,
-        run_cuckoo_count(0),run_cuckoo_loop_count(0){
-      path_length_count = new unsigned long[MAX_BFS_PATH_LEN]();
+        max_num_worker_threads_(0) {
     all_locks_.emplace_back(std::min(bucket_count(), size_type(kMaxNumLocks)),
                             spinlock(), get_allocator());
   }
@@ -186,10 +166,7 @@ public:
             other.num_remaining_lazy_rehash_locks_),
         minimum_load_factor_(other.minimum_load_factor_),
         maximum_hashpower_(other.maximum_hashpower_),
-        max_num_worker_threads_(other.max_num_worker_threads_),
-        run_cuckoo_count(other.run_cuckoo_count),
-        run_cuckoo_loop_count(other.run_cuckoo_loop_count),
-        path_length_count(other.path_length_count){
+        max_num_worker_threads_(other.max_num_worker_threads_) {
     if (other.get_allocator() == alloc) {
       all_locks_ = other.all_locks_;
     } else {
@@ -221,10 +198,7 @@ public:
             other.num_remaining_lazy_rehash_locks_),
         minimum_load_factor_(other.minimum_load_factor_),
         maximum_hashpower_(other.maximum_hashpower_),
-        max_num_worker_threads_(other.max_num_worker_threads_),
-        run_cuckoo_count(other.run_cuckoo_count),
-    run_cuckoo_loop_count(other.run_cuckoo_loop_count),
-    path_length_count(other.path_length_count) {
+        max_num_worker_threads_(other.max_num_worker_threads_) {
     if (other.get_allocator() == alloc) {
       all_locks_ = std::move(other.all_locks_);
     } else {
@@ -253,9 +227,7 @@ public:
    * @param other the map to exchange contents with
    */
   void swap(cuckoohash_map &other) noexcept {
-      printf("swap\n");
-      exit(-1);
-      std::swap(hash_fn_, other.hash_fn_);
+    std::swap(hash_fn_, other.hash_fn_);
     std::swap(eq_fn_, other.eq_fn_);
     buckets_.swap(other.buckets_);
     all_locks_.swap(other.all_locks_);
@@ -626,30 +598,14 @@ public:
    */
   template <typename K> mapped_type find(const K &key) const {
     const hash_value hv = hashed_key(key);
-    const auto b = snapshot_and_lock_two<normal_mode>(hv,true);
-    //      const size_type hp = hashpower();
-//      const size_type i1 = index_hash(hp, hv.hash);
-//      const size_type i2 = alt_index(hp, hv.partial, i1);
+    const auto b = snapshot_and_lock_two<normal_mode>(hv);
     const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
     if (pos.status == ok) {
-        return  buckets_[pos.index].mapped(pos.slot);
+      return buckets_[pos.index].mapped(pos.slot);
     } else {
       throw std::out_of_range("key not found in table");
     }
   }
-
-    template <typename K> bool find_KV(const K &key, mapped_type &val) const {
-        const hash_value hv = hashed_key(key);
-        const auto b = snapshot_and_lock_two<normal_mode>(hv,true);
-        const table_position pos = cuckoo_find(key, hv.partial, b.i1, b.i2);
-        if (pos.status == ok) {
-            val = buckets_[pos.index].mapped(pos.slot);
-            return true;
-        } else {
-            return false;
-        }
-    }
-
 
   /**
    * Returns whether or not @p key is in the table. Equivalent to @ref
@@ -844,15 +800,44 @@ private:
   // Instead, we'll mark all of the locks as not migrated. So anybody trying to
   // acquire the lock must also migrate the corresponding buckets if
   // !is_migrated.
+  //locspinlock
+
   LIBCUCKOO_SQUELCH_PADDING_WARNING
+
+
+#define L_CACHE_LINE_SIZE 128
+
+
+#define r_align(n, r) (((n) + (r)-1) & -(r))
+#define cache_align(n) r_align(n, L_CACHE_LINE_SIZE)
+#define pad_to_cache_line(n) (cache_align(n) - (n))
+#define MEMALIGN(ptr, alignment, size)                                         \
+    posix_memalign((void **)(ptr), (alignment), (size))
+
+#define CPU_PAUSE() asm volatile("pause\n" : : : "memory")
+
+
+
+#ifdef SPINLOCK
+
+#define UNLOCKED 0
+#define LOCKED 1
+
+typedef struct spinlock_mutex {
+    volatile int spin_lock __attribute__((aligned(L_CACHE_LINE_SIZE)));
+} spinlock_mutex_t __attribute__((aligned(L_CACHE_LINE_SIZE)));
+
+
   class LIBCUCKOO_ALIGNAS(64) spinlock {
   public:
-    spinlock() : elem_counter_(0), is_migrated_(true),write_unlock(false) { rwlock = 0; }
+    spinlock() : elem_counter_(0), is_migrated_(true) {
+        lock_ = spinlock_mutex_create(NULL);
+    }
 
     spinlock(const spinlock &other) noexcept
         : elem_counter_(other.elem_counter()),
           is_migrated_(other.is_migrated()) {
-      rwlock = 0;
+      lock_ = spinlock_mutex_create(NULL);
     }
 
     spinlock &operator=(const spinlock &other) noexcept {
@@ -861,72 +846,17 @@ private:
       return *this;
     }
 
-    inline bool isWriteLocked() {
-          return rwlock & 1;
-    }
-    inline bool isReadLocked() {
-          return rwlock & ~1;
-    }
-
-    inline bool isLocked() {
-        return rwlock;
-    }
-
     void lock() noexcept {
-        //printf("%lu try lock write %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-        while (1) {
-            long long v = rwlock;
-            if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
-                while (v & ~1) { // while there are still readers
-                    v = rwlock;
-                }
-                write_unlock = true;
-                return;
-            }
-        }
-    }
-
-    void lock(bool r){
-        //printf("--------------------------%lu try lock read %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-        while (1) {
-            while (isWriteLocked()) {}
-            if ((__sync_add_and_fetch(&rwlock, 2) & 1) == 0) return; // when we tentatively read-locked, there was no writer
-            __sync_add_and_fetch(&rwlock, -2); // release our tentative read-lock
-        }
-    }
-
-      inline bool try_upgradeLock() {
-          long long v = rwlock;
-          if (__sync_bool_compare_and_swap(&rwlock, v & ~1, v | 1)) {
-              __sync_add_and_fetch(&rwlock, -2);
-              while (v & ~1) { // while there are still readers
-                  v = rwlock;
-              }
-              write_unlock = true;
-              return true;
-          }
-          return false;
-      }
-
-    inline void degradeLock(){
-        write_unlock = false;
-        __sync_add_and_fetch(&rwlock,1);
+        spinlock_mutex_lock(lock_);
     }
 
     void unlock() noexcept {
-        if(isWriteLocked() && write_unlock){
-            //printf("%lu write unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-            write_unlock = false;
-            __sync_add_and_fetch(&rwlock, -1);
-        }else {
-            //printf("--------------------------%lu read unlock %lu:%lld\n",pthread_self()%1000,(uint64_t)(&rwlock)%1000,rwlock);
-            __sync_add_and_fetch(&rwlock, -2);
-        }
+        spinlock_mutex_unlock(lock_);
     }
 
     bool try_lock() noexcept {
-      assert(rwlock&1);
-      return !(rwlock & 1);
+        return false;
+      //return !lock_.test_and_set(std::memory_order_acq_rel);
     }
 
     counter_type &elem_counter() noexcept { return elem_counter_; }
@@ -936,12 +866,47 @@ private:
     bool is_migrated() const noexcept { return is_migrated_; }
 
   private:
-      volatile long long rwlock;
-      volatile bool write_unlock;
     //std::atomic_flag lock_;
+    spinlock_mutex_t *lock_;
     counter_type elem_counter_;
     bool is_migrated_;
+
+      inline void *alloc_cache_align(size_t n) {
+          void *res = 0;
+          if ((MEMALIGN(&res, L_CACHE_LINE_SIZE, cache_align(n)) < 0) || !res) {
+              fprintf(stderr, "MEMALIGN(%llu, %llu)", (unsigned long long)n,
+                      (unsigned long long)cache_align(n));
+              exit(-1);
+          }
+          return res;
+      }
+
+      spinlock_mutex_t *spinlock_mutex_create(const pthread_mutexattr_t *attr) {
+          spinlock_mutex_t *impl =
+                  (spinlock_mutex_t *)alloc_cache_align(sizeof(spinlock_mutex_t));
+          impl->spin_lock = UNLOCKED;
+          return impl;
+      }
+
+
+      int spinlock_mutex_lock(spinlock_mutex_t *impl) {
+          while (__sync_val_compare_and_swap(&impl->spin_lock, UNLOCKED, LOCKED) ==
+                 LOCKED)
+                  CPU_PAUSE();
+          return 0;
+      }
+
+      void __spinlock_mutex_unlock(spinlock_mutex_t *impl) {
+          int old = __sync_val_compare_and_swap(&impl->spin_lock, LOCKED, UNLOCKED);
+          assert(old == LOCKED);
+      }
+
+      void spinlock_mutex_unlock(spinlock_mutex_t *impl) {
+          __spinlock_mutex_unlock(impl);
+      }
   };
+
+#endif
 
   template <typename U>
   using rebind_alloc =
@@ -1076,30 +1041,6 @@ private:
     return LockManager(&lock);
   }
 
-
-    LockManager lock_one(size_type hp, size_type i, normal_mode,bool r) const {
-        locks_t &locks = get_current_locks();
-        const size_type l = lock_ind(i);
-        spinlock &lock = locks[l];
-
-        while(true) {
-            lock.lock(r);
-            check_hashpower(hp, lock);
-            if (lock.is_migrated()) {
-                break; //no need to migrate
-            }else{
-                if (lock.try_upgradeLock()) {
-                    rehash_lock<kIsLazy>(l);
-                    lock.degradeLock();
-                    break; //migrate finish
-                } else {
-                    lock.unlock(); //other thread try migrating now ,just release read lock and lock again
-                }
-            }
-        }
-        return LockManager(&lock);
-    }
-
   // locks the two bucket indexes, always locking the earlier index first to
   // avoid deadlock. If the two indexes are the same, it just locks one.
   //
@@ -1126,53 +1067,6 @@ private:
     rehash_lock<kIsLazy>(l2);
     return TwoBuckets(locks, i1, i2, normal_mode());
   }
-
-    TwoBuckets lock_two(size_type hp, size_type i1, size_type i2,
-                        normal_mode,bool r) const {
-        size_type l1 = lock_ind(i1);
-        size_type l2 = lock_ind(i2);
-        if (l2 < l1) {
-            std::swap(l1, l2);
-        }
-        locks_t &locks = get_current_locks();
-
-        while(true) {
-            locks[l1].lock(r);
-            check_hashpower(hp, locks[l1]);
-            if (locks[l1].is_migrated()) {
-                break; //no need to migrate
-            }else{
-                if (locks[l1].try_upgradeLock()) {
-                    rehash_lock<kIsLazy>(l1);
-                    locks[l1].degradeLock();
-                    break; //migrate finish
-                } else {
-                    locks[l1].unlock(); //other thread try migrating now ,just release read lock and lock again
-                }
-            }
-        }
-
-        while(true){
-            if (l2 != l1) {
-                locks[l2].lock(r);
-                if (locks[l2].is_migrated()) {
-                    break; //no need to migrate
-                }else{
-                    if (locks[l2].try_upgradeLock()) {
-                        rehash_lock<kIsLazy>(l2);
-                        locks[l2].degradeLock();
-                        break; //migrate finish
-                    } else {
-                        locks[l2].unlock(); //other thread try migrating now ,just release read lock and lock again
-                    }
-                }
-            }else{
-                break;//there are just one bucket need to be locked,and must have been migrated
-            }
-        }
-
-        return TwoBuckets(locks, i1, i2, normal_mode());
-    }
 
   // lock_three locks the three bucket indexes in numerical order, returning
   // the containers as a two (i1 and i2) and a one (i3). The one will not be
@@ -1237,22 +1131,6 @@ private:
       }
     }
   }
-
-    template <typename TABLE_MODE>
-    TwoBuckets snapshot_and_lock_two(const hash_value &hv,bool r) const {
-        while (true) {
-            // Keep the current hashpower and locks we're using to compute the buckets
-            const size_type hp = hashpower();
-            const size_type i1 = index_hash(hp, hv.hash);
-            const size_type i2 = alt_index(hp, hv.partial, i1);
-            try {
-                return lock_two(hp, i1, i2, TABLE_MODE(),r);
-            } catch (hashpower_changed &) {
-                // The hashpower changed while taking the locks. Try again.
-                continue;
-            }
-        }
-    }
 
   // lock_all takes all the locks, and returns a deleter object that releases
   // the locks upon destruction. It does NOT perform any hashpower checks, or
@@ -1374,9 +1252,7 @@ private:
         return pos;
       case failure_table_full:
         // Expand the table and try again, re-grabbing the locks
-        printf("rehash\n");
         cuckoo_fast_double<TABLE_MODE, automatic_resize>(hp);
-        printf("rehsah finish\n");
         b = snapshot_and_lock_two<TABLE_MODE>(hv);
         break;
       case failure_under_expansion:
@@ -1511,6 +1387,9 @@ private:
     hash_value hv;
   } CuckooRecord;
 
+  // The maximum number of items in a cuckoo BFS path. It determines the
+  // maximum number of slots we search when cuckooing.
+  static constexpr uint8_t MAX_BFS_PATH_LEN = 5;
 
   // An array of CuckooRecords
   using CuckooRecords = std::array<CuckooRecord, MAX_BFS_PATH_LEN>;
@@ -1543,20 +1422,18 @@ private:
     // hashpower, meaning the buckets may not be valid anymore. In this
     // case, the cuckoopath functions will have thrown a hashpower_changed
     // exception, which we catch and handle here.
-    //__sync_fetch_and_add(&run_cuckoo_count,1);
     size_type hp = hashpower();
     b.unlock();
     CuckooRecords cuckoo_path;
     bool done = false;
     try {
       while (!done) {
-          //__sync_fetch_and_add(&run_cuckoo_loop_count,1);
         const int depth =
             cuckoopath_search<TABLE_MODE>(hp, cuckoo_path, b.i1, b.i2);
         if (depth < 0) {
           break;
         }
-        //__sync_fetch_and_add(path_length_count+depth,1);
+
         if (cuckoopath_move<TABLE_MODE>(hp, cuckoo_path, depth, b)) {
           insert_bucket = cuckoo_path[0].bucket;
           insert_slot = cuckoo_path[0].slot;
@@ -1612,7 +1489,7 @@ private:
       first.bucket = i2;
     }
     {
-      const auto lock_manager = lock_one(hp, first.bucket, TABLE_MODE(),true);
+      const auto lock_manager = lock_one(hp, first.bucket, TABLE_MODE());
       const bucket &b = buckets_[first.bucket];
       if (!b.occupied(first.slot)) {
         // We can terminate here
@@ -1629,7 +1506,7 @@ private:
       // We get the bucket that this slot is on by computing the alternate
       // index of the previous bucket
       curr.bucket = alt_index(hp, prev.hv.partial, prev.bucket);
-      const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE(),true);
+      const auto lock_manager = lock_one(hp, curr.bucket, TABLE_MODE());
       const bucket &b = buckets_[curr.bucket];
       if (!b.occupied(curr.slot)) {
         // We can terminate here
@@ -1813,7 +1690,7 @@ private:
     q.enqueue(b_slot(i2, 1, 0));
     while (!q.empty()) {
       b_slot x = q.dequeue();
-      auto lock_manager = lock_one(hp, x.bucket, TABLE_MODE(),true);
+      auto lock_manager = lock_one(hp, x.bucket, TABLE_MODE());
       bucket &b = buckets_[x.bucket];
       // Picks a (sort-of) random slot to start from
       size_type starting_slot = x.pathcode % slot_per_bucket();
@@ -2247,8 +2124,6 @@ private:
   // Marked mutable so that const methods can rehash into this container when
   // necessary.
   mutable buckets_t buckets_;
-
-
 
   // An old container of buckets, containing data that may not have been
   // rehashed into the current one. If valid, this will always have a hashpower
