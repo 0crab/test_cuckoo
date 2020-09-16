@@ -29,8 +29,6 @@
 #include "bucket_container.hh"
 
 
-#define SPINLOCK 1
-
 namespace libcuckoo {
 
 /**

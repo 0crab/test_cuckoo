@@ -3,7 +3,11 @@ project(test_cuckoo)
 
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_C_FLAGS -fheinous-gnu-extensions)
+
 link_libraries(pthread)
+
+add_subdirectory(locktest)
 
 add_executable(test_cuckoo main.cpp)
 
@@ -18,5 +22,3 @@ add_executable(cpptest cpptest.cpp)
 add_executable(ycsb ycsb.cpp)
 
 add_executable(ycsb_char ycsb_char.cpp)
-
-#add_executable(string_test string_test.cpp)
