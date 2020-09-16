@@ -5,11 +5,13 @@
 #include <atomic>
 #include <assert.h>
 #include <thread>
-
+#include "tracer.h"
 #define TEST_NUM 1000000
 #define THREAD_NUM 4
 
 using counter_type = int64_t;
+
+unsigned long  *runtimelist;
 
 #include "interpose.h"
 
@@ -84,13 +86,16 @@ TABLE table;
 
 void run(int tid){
     cur_thread_id = tid;
+    Tracer tracer;
+    tracer.startTime();
     for(int i = 0; i < TEST_NUM; i++){
         table.work();
     }
+    runtimelist[tid]+=tracer.getRunTime();
 }
 
 int main(){
-
+    runtimelist=(unsigned long *)malloc(THREAD_NUM* sizeof(unsigned long));
     std::vector<std::thread> threads;
     for(int i = 0; i < THREAD_NUM; i++){
         threads.push_back(std::thread(run,i));
@@ -98,6 +103,15 @@ int main(){
     for(int i = 0; i < THREAD_NUM; i++){
         threads[i].join();
     }
+q
 
     std::cout<<"global_count : "<<table.global_count<<std::endl;
+
+    unsigned long runtime=0;
+    for(int i = 0;i < THREAD_NUM; i++){
+        runtime += runtimelist[i];
+    }
+    runtime /= (THREAD_NUM);
+    printf("run runtime:%lu\n",runtime);
+
 }
