@@ -13,8 +13,8 @@
 #define PAGE_SIZE                         4096
 #define CPU_FREQ                          1.8
 
-#define LOCKED 1
-#define UNLOCKED 0
+#define LOCKED 0
+#define UNLOCKED 1
 
 #define MAX_THREADS 50
 #define CPU_PAUSE() asm volatile("pause\n" : : : "memory")

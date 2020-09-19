@@ -103,7 +103,6 @@ int main(){
     for(int i = 0; i < THREAD_NUM; i++){
         threads[i].join();
     }
-q
 
     std::cout<<"global_count : "<<table.global_count<<std::endl;
 

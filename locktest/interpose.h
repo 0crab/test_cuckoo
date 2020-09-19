@@ -1,10 +1,19 @@
-#define CLHLOCK 1
+#define PARTITIONED 1
 
 #ifdef SPINLOCK
 #include "spinlock.h"
 #elif defined(CLHLOCK)
 #include "clh.h"
+#elif defined(MCSLOCK)
+#include "mcs.h"
+#elif defined(CNALOCK)
+#include "cna.h"
+#elif defined(MALTHUSIANLOCK)
+#include "malthusian.h"
+#elif defined(PARTITIONED)
+#include "partitioned.h"
 #endif
+
 
 unsigned int last_thread_id;
 __thread unsigned int cur_thread_id;
