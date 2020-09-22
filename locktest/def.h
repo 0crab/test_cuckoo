@@ -16,7 +16,7 @@
 #define LOCKED 0
 #define UNLOCKED 1
 
-#define MAX_THREADS 50
+#define MAX_THREADS 200
 #define CPU_PAUSE() asm volatile("pause\n" : : : "memory")
 #define COMPILER_BARRIER() asm volatile("" : : : "memory")
 #define MEMORY_BARRIER() __sync_synchronize()
