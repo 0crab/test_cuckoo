@@ -6,41 +6,46 @@
 #include <assert.h>
 #include <thread>
 #include <mutex>
+#include <cstdlib>
 #include "tracer.h"
 #define TEST_NUM 1000000
 #define THREAD_NUM 4
 
-//#define MUTEXLOCK 1
-#define PSPINLOCK 1
+#define MUTEX 1
+//#define PSPINLOCK 1
 //#define LITLLOCK 1
 
-#define CONFLICT true
+//#define CONFLICT true
 
 using counter_type = int64_t;
 
 unsigned long  *runtimelist;
 
+int conflict_rate;
+bool *conflict_signal_list;
+
 #include "interpose.h"
 
 class TABLE {
 public:
-    int global_count;
+    int global_count_f;
+    int global_count_nf;
 
     TABLE() {
-        all_locks_.emplace_back(112, spinlock());
+        all_locks_.emplace_back(113, spinlock());
     }
 
-    void work() {
+    void work(int i) {
         locks_t &locks = get_current_locks();
-#if CONFLICT
-        locks[0].lock();
-        global_count++;
-        locks[0].unlock();
-#else
-        locks[cur_thread_id].lock();
-        global_count++;
-        locks[cur_thread_id].unlock();
-#endif
+        if(conflict_signal_list[i]){
+            locks[112].lock();
+            global_count_f++;
+            locks[112].unlock();
+        }else{
+            locks[cur_thread_id].lock();
+            global_count_nf++;
+            locks[cur_thread_id].unlock();
+        }
     }
 
     class spinlock {
@@ -110,9 +115,9 @@ public:
 #ifdef LITLLOCK
         lock_transparent_mutex_t *impl;
 #elif defined(MUTEX)
-        std::mutex mtx;
+        std::mutex mtx  __attribute__((aligned(128)));
 #elif defined(PSPINLOCK)
-        pthread_spinlock_t lock_;
+        pthread_spinlock_t lock_ __attribute__((aligned(128)));
 #endif
 
         counter_type elem_counter_;
@@ -134,12 +139,30 @@ void run(int tid){
     Tracer tracer;
     tracer.startTime();
     for(int i = 0; i < TEST_NUM; i++){
-        table.work();
+        table.work(i);
     }
     runtimelist[tid]+=tracer.getRunTime();
 }
 
-int main(){
+
+
+int main(int argc,char **argv){
+
+    if(argc == 2){
+        conflict_rate = atol(argv[1]);
+    }else{
+        printf("./locktest <conflict_rate>");
+    }
+
+    assert(conflict_rate<=100&&conflict_rate>=0);
+
+    conflict_signal_list = static_cast<bool *>(calloc(TEST_NUM, sizeof(bool)));
+
+    srand((unsigned)time(NULL));
+    for(int i = 0 ; i < TEST_NUM; i++){
+        conflict_signal_list[i] = rand() % 100 < conflict_rate;
+    }
+
     runtimelist=(unsigned long *)calloc(THREAD_NUM,sizeof(unsigned long));
 
     std::vector<std::thread> threads;
@@ -150,7 +173,8 @@ int main(){
         threads[i].join();
     }
 
-    std::cout<<"global_count : "<<table.global_count<<std::endl;
+    std::cout<<"global_count_f : "<<table.global_count_f<<std::endl;
+    std::cout<<"global_count_nf: "<<table.global_count_nf<<std::endl;
 
     unsigned long runtime=0;
     for(int i = 0;i < THREAD_NUM; i++){
