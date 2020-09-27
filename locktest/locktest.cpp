@@ -11,9 +11,9 @@
 #define TEST_NUM 1000000
 #define THREAD_NUM 4
 
-#define MUTEX 1
+//#define MUTEX 1
 //#define PSPINLOCK 1
-//#define LITLLOCK 1
+#define LITLLOCK 1
 
 //#define CONFLICT true
 
@@ -152,6 +152,7 @@ int main(int argc,char **argv){
         conflict_rate = atol(argv[1]);
     }else{
         printf("./locktest <conflict_rate>");
+        exit(0);
     }
 
     assert(conflict_rate<=100&&conflict_rate>=0);

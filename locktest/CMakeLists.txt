@@ -9,3 +9,5 @@ set(CMAKE_C_FLAGS -fheinous-gnu-extensions)
 link_libraries(pthread)
 
 add_executable(locktest locktest.cpp)
+
+add_executable(insttest insttest.cpp)

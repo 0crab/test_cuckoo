@@ -83,9 +83,17 @@ spinlock_mutex_t *spinlock_mutex_create(const pthread_mutexattr_t *attr) {
 
 int spinlock_mutex_lock(spinlock_mutex_t *impl,
                         spinlock_context_t *UNUSED(me)) {
-while (__sync_val_compare_and_swap(&impl->spin_lock, UNLOCKED, LOCKED) ==
-LOCKED)
-CPU_PAUSE();
+    int v;
+    if(__glibc_likely(  __sync_val_compare_and_swap(&impl->spin_lock, UNLOCKED, LOCKED) ==
+    UNLOCKED))
+            return 0;
+    do{
+        CPU_PAUSE();
+        do{v=impl->spin_lock;}while(v==LOCKED);
+    }while (__sync_val_compare_and_swap(&impl->spin_lock, UNLOCKED, LOCKED) ==
+            LOCKED);
+
+
 #if COND_VAR
 int ret = REAL(pthread_mutex_lock)(&impl->posix_lock);
 

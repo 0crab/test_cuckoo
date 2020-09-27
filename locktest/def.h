@@ -22,6 +22,14 @@
 #define MEMORY_BARRIER() __sync_synchronize()
 #define REP_VAL 23
 
+#if __GNUC__ >= 3
+# define __glibc_unlikely(cond)	__builtin_expect ((cond), 0)
+# define __glibc_likely(cond)	__builtin_expect ((cond), 1)
+#else
+# define __glibc_unlikely(cond)	(cond)
+# define __glibc_likely(cond)	(cond)
+#endif
+
 #define OPTERON_OPTIMIZE 1
 #ifdef OPTERON_OPTIMIZE
 #define PREFETCHW(x) asm volatile("prefetchw %0" ::"m"(*(unsigned long *)x))

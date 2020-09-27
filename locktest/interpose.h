@@ -1,4 +1,4 @@
-#define PARTITIONED 1
+#define SPINLOCK 1
 
 #ifdef SPINLOCK
 #include "spinlock.h"
