@@ -40,7 +40,7 @@ public:
 
     void work(int i) {
         //locks_t &locks = get_current_locks();
-        spinlock lock = locks_t[i];
+        spinlock lock = locks_t[cur_thread_id];
             lock.lock();
             global_count_nf++;
             lock.unlock();
@@ -146,9 +146,8 @@ void run(int tid){
     tracer.startTime();
     Inst  * p = insts+tid;
     for(int i = 0; i < TEST_NUM; i++){
-        //table.work(i);
-        uint64_t d;
-        do { d = p->lock_.load(); } while (!p->lock_.compare_exchange_strong(d, i));
+       table.work(i);
+
     }
     runtimelist[tid]+=tracer.getRunTime();
 }
