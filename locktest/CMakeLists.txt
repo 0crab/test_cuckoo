@@ -11,3 +11,5 @@ link_libraries(pthread)
 add_executable(locktest locktest.cpp)
 
 add_executable(insttest insttest.cpp)
+
+add_executable(locktest_tmp locktest_tmp.cpp)
