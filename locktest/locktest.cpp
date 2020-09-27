@@ -134,12 +134,25 @@ public:
 
 TABLE table;
 
+typedef struct alignas(128) INST{
+    std::atomic<uint64_t> lock_;
+}Inst;
+
+Inst  * insts;
+
+void insts_init(){
+    return;
+}
+
 void run(int tid){
     cur_thread_id = tid;
     Tracer tracer;
     tracer.startTime();
+    Inst  * p = insts+tid;
     for(int i = 0; i < TEST_NUM; i++){
-        table.work(i);
+        //table.work(i);
+        uint64_t d;
+        do { d = p->lock_.load(); } while (!p->lock_.compare_exchange_strong(d, i));
     }
     runtimelist[tid]+=tracer.getRunTime();
 }
@@ -156,6 +169,9 @@ int main(int argc,char **argv){
     }
 
     assert(conflict_rate<=100&&conflict_rate>=0);
+
+    insts = static_cast<Inst *>(calloc(THREAD_NUM, sizeof(Inst)));
+    insts_init();
 
     conflict_signal_list = static_cast<bool *>(calloc(TEST_NUM, sizeof(bool)));
 
