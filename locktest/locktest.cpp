@@ -11,15 +11,17 @@
 #define TEST_NUM 1000000
 #define THREAD_NUM 4
 
-//#define MUTEX 1
+#define MUTEX 1
 //#define PSPINLOCK 1
-#define LITLLOCK 1
+//#define LITLLOCK 1
 
 //#define CONFLICT true
 
 using counter_type = int64_t;
 
 unsigned long  *runtimelist;
+
+uint64_t oplist[113];
 
 int conflict_rate;
 bool *conflict_signal_list;
@@ -39,11 +41,11 @@ public:
         locks_t &locks = get_current_locks();
         if(conflict_signal_list[i]){
             locks[112].lock();
-            global_count_f++;
+            oplist[cur_thread_id]++;
             locks[112].unlock();
         }else{
             locks[cur_thread_id].lock();
-            global_count_nf++;
+            oplist[cur_thread_id]++;
             locks[cur_thread_id].unlock();
         }
     }
@@ -150,9 +152,7 @@ void run(int tid){
     tracer.startTime();
     Inst  * p = insts+tid;
     for(int i = 0; i < TEST_NUM; i++){
-        //table.work(i);
-        uint64_t d;
-        do { d = p->lock_.load(); } while (!p->lock_.compare_exchange_strong(d, i));
+        table.work(i);
     }
     runtimelist[tid]+=tracer.getRunTime();
 }
@@ -190,8 +190,8 @@ int main(int argc,char **argv){
         threads[i].join();
     }
 
-    std::cout<<"global_count_f : "<<table.global_count_f<<std::endl;
-    std::cout<<"global_count_nf: "<<table.global_count_nf<<std::endl;
+    std::cout<<"oplist[0] : "<<oplist[0]<<std::endl;
+    std::cout<<"oplist[1] : "<<oplist[1]<<std::endl;
 
     unsigned long runtime=0;
     for(int i = 0;i < THREAD_NUM; i++){
