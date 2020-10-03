@@ -12,8 +12,8 @@
 string load_path = "/home/czl/CLionProjects/test_cuckoo/load-a.dat";
 string run_path = "/home/czl/CLionProjects/test_cuckoo/run-a.dat";
 #else
-string load_path = "/kolla/asterixdb/YCSB/load-a-200m-8B.dat";
-string run_path = "/kolla/asterixdb/YCSB/run-a-200m-8B.dat";
+string load_path = "/mnt/nvme/czl/YCSB/load-a-200m-8B.dat";
+string run_path = "/mnt/nvme/czl/YCSB/run-a-200m-8B.dat";
 #endif
 
 
@@ -81,7 +81,7 @@ int main(int argc, char **argv){
         runtime /= (THREAD_NUM);
         printf("load runtime:%lu\n",runtime);
     }
-    Table.show_not_migrated_num();
+   // Table.show_not_migrated_num();
     for(int i = 0; i < THREAD_NUM;i++){
         runtimelist[i] = 0;
     }
@@ -141,9 +141,9 @@ void work_thread(int tid,bool load){
 #if(!CHECK_FIND)
         if(!it->getOp()){
             try {
-                string s;
-                //string res = Table.find(it->getKey());
-                Table.find_KV(it->getKey(),s);
+                string s,res;
+                Table.find(it->getKey(),res);
+                //Table.find_KV(it->getKey(),s);
             }catch (const std::out_of_range& e){
                 std::cout<<e.what()<<endl;
                 exit(-1);
